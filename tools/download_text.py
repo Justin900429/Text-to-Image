@@ -23,10 +23,6 @@ arg_p.add_argument("-t", "--image_type",
                    type=str,
                    default="train",
                    help="Types for the image - train and val")
-arg_p.add_argument("-n", "--numbers",
-                   type=int,
-                   default=1000,
-                   help="Numbers of text, images pair to be downloaded")
 arg_p.add_argument("-p", "--place",
                    type=str,
                    required=True,
