@@ -36,8 +36,8 @@ parser.add_argument('--image_size',
 args = parser.parse_args()
 
 # Constants
-IMAGE_SIZE = args["image_size"]
-IMAGE_PATH = args["image_folder"]
+IMAGE_SIZE = args.image_size
+IMAGE_PATH = args.image_folder
 
 # Hyperparameters for training
 EPOCHS = 20
