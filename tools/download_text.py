@@ -61,7 +61,7 @@ images_ids = list(coco_images.anns.keys())
 # Saving path
 save_path = f"{args['place']}/"
 count = 1
-running_id = tqdm(images_ids[:args["numbers"]], leave=False)
+running_id = tqdm(images_ids, leave=False)
 
 # Start download and saving files
 for idx in running_id:
