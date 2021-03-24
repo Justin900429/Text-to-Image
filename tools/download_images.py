@@ -64,13 +64,10 @@ coco_captions = COCO(caption_file)
 # Get images id in coco
 images_ids = list(coco_images.anns.keys())
 
-# Random pick the images
-random_images_id = np.random.choice(images_ids, args["numbers"])
-
 # Saving path
 save_path = f"{args['place']}/"
 count = 1
-running_id = tqdm(random_images_id, leave=False)
+running_id = tqdm(images_ids[:args["numbers"]], leave=False)
 
 # Start download and saving files
 for idx in running_id:
@@ -81,8 +78,12 @@ for idx in running_id:
     img = coco_images.loadImgs(img_id)[0]
     url = img['coco_url']
 
-    # Read in image and save
-    io.imsave(f"{save_path}/img_{count}.jpg", io.imread(url))
+    try:
+        # Read in image and save
+        io.imsave(f"{save_path}/img_{count}.jpg", io.imread(url))
+    except:
+        logging.info(f"Loss image, {count}")
+        continue
 
     # Load captions
     captions_id = coco_captions.getAnnIds(imgIds=img['id'])
