@@ -4,8 +4,6 @@ import zipfile
 import requests
 from pycocotools.coco import COCO
 from tqdm import tqdm
-import skimage.io as io
-import numpy as np
 import argparse
 
 # Set to info level for prompting in terminal
@@ -18,8 +16,8 @@ arg_p.add_argument("-c", "--coco",
                    default=".",
                    help="Place for the coco json files")
 arg_p.add_argument("-d", "--download",
-                   type=bool,
-                   default=False,
+                   type=str,
+                   default="false",
                    help="Download the annotation files")
 arg_p.add_argument("-t", "--image_type",
                    type=str,
@@ -42,7 +40,7 @@ if not os.path.isdir(args["place"]):
 
 data_dir = f"{args['coco']}"
 
-if args["download"]:
+if args["download"] == "true":
     # Download json zip file
     url_json = "http://images.cocodataset.org/annotations/annotations_trainval2017.zip"
     r = requests.get(url_json, allow_redirects=True)
@@ -71,21 +69,14 @@ running_id = tqdm(images_ids[:args["numbers"]], leave=False)
 
 # Start download and saving files
 for idx in running_id:
-    running_id.set_description(f"Downloading images {count}", refresh=True)
+    running_id.set_description(f"Downloading text {count}", refresh=True)
 
     # Load image url
     img_id = coco_images.anns[idx]['image_id']
     img = coco_images.loadImgs(img_id)[0]
-    url = img['coco_url']
-
-    try:
-        # Read in image and save
-        io.imsave(f"{save_path}/img_{count}.jpg", io.imread(url))
-    except:
-        logging.info(f"Loss image, {count}")
-        continue
 
     # Load captions
+    file_name = img["file_name"].split(".")[0]
     captions_id = coco_captions.getAnnIds(imgIds=img['id'])
     captions_list = coco_captions.loadAnns(captions_id)
 
@@ -93,7 +84,7 @@ for idx in running_id:
     captions_txt = ""
     for caption in captions_list:
         captions_txt = captions_txt + caption["caption"] + "\n"
-    with open(f"{save_path}/img_{count}.txt", "w") as text_file:
+    with open(f"{save_path}/{file_name}.txt", "w") as text_file:
         text_file.write(captions_txt)
 
     # Increase images number
