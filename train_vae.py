@@ -2,6 +2,7 @@
 Original GitHub link: https://github.com/lucidrains/DALLE-pytorch
 """
 # Import built-in package
+import logging
 import os
 import math
 from math import sqrt
@@ -21,6 +22,11 @@ from dalle_pytorch import DiscreteVAE
 
 # Import pillow for process image
 from PIL import Image
+
+# Set to info level for prompting in terminal
+from tqdm import tqdm
+
+logging.getLogger().setLevel(logging.INFO)
 
 # Argument parsing
 parser = argparse.ArgumentParser()
@@ -45,14 +51,18 @@ parser.add_argument("--path",
                     help="Path for the reused model")
 args = parser.parse_args()
 
+load_model = None
+if args.retrain == "true":
+    load_model = torch.load(args.path)
+
 # Constants
 IMAGE_SIZE = args.image_size
 IMAGE_PATH = args.image_folder
 
 # Hyperparameters for training
 EPOCHS = 20
-BATCH_SIZE = 32
-LEARNING_RATE = 1e-3
+BATCH_SIZE = 16
+LEARNING_RATE = load_model["learning_rate"] if load_model is not None else 1e-3
 LR_DECAY_RATE = 0.98
 
 # Hyperparameters for models
@@ -106,10 +116,6 @@ class TrainDataset(Dataset):
         return cur_img, item
 
 
-load_model = None
-if args.retrain == "true":
-    load_model = torch.load(args.path)
-
 # Creat dataset and dataloader
 ds = TrainDataset(
     root=IMAGE_PATH,
@@ -145,14 +151,15 @@ if load_model is not None:
 
 # Check whether training data is enough
 assert len(ds) > 0, 'folder does not contain any images'
-print(f'{len(ds)} images found for training')
+logging.info(f'{len(ds)} images found for training')
 
 
-def save_model(path):
+def save_model(path, lr):
     # Save the training state
     save_obj = {
         'hparams': vae_params,
-        'weights': vae.state_dict()
+        'weights': vae.state_dict(),
+        "learning_rate": lr
     }
     torch.save(save_obj, path)
 
@@ -166,7 +173,9 @@ global_step = 0
 temp = STARTING_TEMP
 
 for epoch in range(EPOCHS):
-    for i, (images, _) in enumerate(dl):
+    running = tqdm(dl, leave=False)
+    for i, (images, _) in enumerate(running):
+        running.set_description(f"Epoch {epoch+1}/{EPOCHS}")
         images = images.to(device)
 
         loss, recons = vae(
@@ -194,7 +203,7 @@ for epoch in range(EPOCHS):
                 lambda t: make_grid(t.float(), nrow=int(sqrt(k)), normalize=True, range=(-1, 1)),
                 (images, recons, hard_recons))
 
-            save_model(f'./vae.pt')
+            save_model(f'./vae.pt', scheduler.get_last_lr()[0])
 
             # Temperature anneal
             temp = max(temp * math.exp(-ANNEAL_RATE * global_step), TEMP_MIN)
@@ -204,7 +213,7 @@ for epoch in range(EPOCHS):
 
         if i % 10 == 0:
             lr = scheduler.get_last_lr()[0]
-            print(epoch, i, f'lr - {lr:6f} loss - {loss.item()}')
+            running.set_postfix(learning_rate=f"lr - {lr:6f}", loss=f"{loss.item()}")
 
         global_step += 1
 
