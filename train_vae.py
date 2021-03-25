@@ -33,6 +33,16 @@ parser.add_argument('--image_size',
                     required=False,
                     default=128,
                     help='Image size to be reshaped')
+parser.add_argument("--retrain",
+                    type=str,
+                    required=False,
+                    default="false",
+                    help="Reuse the last training weight")
+parser.add_argument("--path",
+                    type=str,
+                    required=False,
+                    default=None,
+                    help="Path for the reused model")
 args = parser.parse_args()
 
 # Constants
@@ -41,7 +51,7 @@ IMAGE_PATH = args.image_folder
 
 # Hyperparameters for training
 EPOCHS = 20
-BATCH_SIZE = 8
+BATCH_SIZE = 32
 LEARNING_RATE = 1e-3
 LR_DECAY_RATE = 0.98
 
@@ -96,6 +106,10 @@ class TrainDataset(Dataset):
         return cur_img, item
 
 
+load_model = None
+if args.retrain == "true":
+    load_model = torch.load(args.path)
+
 # Creat dataset and dataloader
 ds = TrainDataset(
     root=IMAGE_PATH,
@@ -108,19 +122,26 @@ ds = TrainDataset(
 dl = DataLoader(ds, BATCH_SIZE, shuffle=True)
 
 # Create parameters for training dVAE
-vae_params = dict(
-    image_size=IMAGE_SIZE,
-    num_layers=NUM_LAYERS,
-    num_tokens=NUM_TOKENS,
-    codebook_dim=EMB_DIM,
-    hidden_dim=HID_DIM,
-    num_resnet_blocks=NUM_RESNET_BLOCKS
-)
+if load_model is not None:
+    vae_params = load_model["hparams"]
+else:
+    vae_params = dict(
+        image_size=IMAGE_SIZE,
+        num_layers=NUM_LAYERS,
+        num_tokens=NUM_TOKENS,
+        codebook_dim=EMB_DIM,
+        hidden_dim=HID_DIM,
+        num_resnet_blocks=NUM_RESNET_BLOCKS
+    )
 vae = DiscreteVAE(
     **vae_params,
     smooth_l1_loss=SMOOTH_L1_LOSS,
     kl_div_loss_weight=KL_LOSS_WEIGHT
 ).to(device)
+
+if load_model is not None:
+    # Load state dict
+    vae.load_state_dict(load_model["weights"])
 
 # Check whether training data is enough
 assert len(ds) > 0, 'folder does not contain any images'
