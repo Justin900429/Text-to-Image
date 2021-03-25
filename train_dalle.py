@@ -3,6 +3,7 @@ GitHub link: https://github.com/lucidrains/DALLE-pytorch
 """
 # Import built-in package
 import argparse
+import logging
 from random import choice
 from pathlib import Path
 
@@ -17,6 +18,9 @@ from torch.utils.data import DataLoader, Dataset
 # Import DALLE package
 from dalle_pytorch import OpenAIDiscreteVAE, VQGanVAE1024, DiscreteVAE, DALLE
 from dalle_pytorch.simple_tokenizer import tokenize, tokenizer, VOCAB_SIZE
+
+# Set up logger
+logging.getLogger().setLevel(logging.INFO)
 
 # Argument parsing
 parser = argparse.ArgumentParser()
@@ -69,7 +73,7 @@ DIM_HEAD = 64
 REVERSIBLE = True
 
 # Check cuda is available or not
-device = "cuda" if torch.cuda.is_available() else "cpu"
+device = "cuda:0" if torch.cuda.is_available() else "cpu"
 
 # Reconstitute vae
 if RESUME:
@@ -101,7 +105,7 @@ else:
         vae = DiscreteVAE(**vae_params)
         vae.load_state_dict(weights)
     else:
-        print('Using pretrained VAE for encoding images to tokens')
+        logging.info('Using pretrained VAE for encoding images to tokens')
         vae_params = None
 
         vae_klass = OpenAIDiscreteVAE if not args.taming else VQGanVAE1024
@@ -189,7 +193,7 @@ ds = TextImageDataset(
 
 # Check whether users have data to train
 assert len(ds) > 0, 'dataset is empty'
-print(f'{len(ds)} image-text pairs found for training')
+logging.info(f'{len(ds)} image-text pairs found for training')
 
 dl = DataLoader(ds, batch_size=BATCH_SIZE, shuffle=True, drop_last=True)
 
@@ -217,7 +221,7 @@ for epoch in range(EPOCHS):
         opt.zero_grad()
 
         if i % 10 == 0:
-            print(epoch, i, f'loss - {loss.item()}')
+            logging.info(epoch, i, f'loss - {loss.item()}')
 
         if i % 100 == 0:
             sample_text = text[:1]

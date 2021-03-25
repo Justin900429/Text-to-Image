@@ -26,6 +26,7 @@ from PIL import Image
 # Set to info level for prompting in terminal
 from tqdm import tqdm
 
+# Set up logger
 logging.getLogger().setLevel(logging.INFO)
 
 # Argument parsing
@@ -81,7 +82,7 @@ ANNEAL_RATE = 1e-6
 NUM_IMAGES_SAVE = 4
 
 # Check cuda is available or not
-device = "cuda" if torch.cuda.is_available() else "cpu"
+device = "cuda:0" if torch.cuda.is_available() else "cpu"
 
 
 class TrainDataset(Dataset):
@@ -198,7 +199,8 @@ for epoch in range(EPOCHS):
                 hard_recons = vae.decode(codes)
 
             images, recons = map(lambda t: t[:k], (images, recons))
-            images, recons, hard_recons, codes = map(lambda t: t.detach().cpu(), (images, recons, hard_recons, codes))
+            images, recons, hard_recons, codes = map(lambda t: t.detach().cpu(),
+                                                     (images, recons, hard_recons, codes))
             images, recons, hard_recons = map(
                 lambda t: make_grid(t.float(), nrow=int(sqrt(k)), normalize=True, range=(-1, 1)),
                 (images, recons, hard_recons))
