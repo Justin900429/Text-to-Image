@@ -221,7 +221,7 @@ for epoch in range(EPOCHS):
         opt.zero_grad()
 
         if i % 10 == 0:
-            logging.info(epoch, i, f'loss - {loss.item()}')
+            logging.info(f"{epoch}, {i}, loss - {loss.item()}")
 
         if i % 100 == 0:
             sample_text = text[:1]
