@@ -184,6 +184,8 @@ for epoch in range(EPOCHS):
         loss.backward()
         opt.step()
 
+        logs = {}
+
         if i % 100 == 0:
             k = NUM_IMAGES_SAVE
 
