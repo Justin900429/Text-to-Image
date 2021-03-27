@@ -26,6 +26,9 @@ from PIL import Image
 # Set to info level for prompting in terminal
 from tqdm import tqdm
 
+# Weight and bias for seeing the result
+import wandb
+
 # Set up logger
 logging.getLogger().setLevel(logging.INFO)
 
@@ -40,21 +43,7 @@ parser.add_argument('--image_size',
                     required=False,
                     default=128,
                     help='Image size to be reshaped')
-parser.add_argument("--retrain",
-                    type=str,
-                    required=False,
-                    default="false",
-                    help="Reuse the last training weight")
-parser.add_argument("--path",
-                    type=str,
-                    required=False,
-                    default=None,
-                    help="Path for the reused model")
 args = parser.parse_args()
-
-load_model = None
-if args.retrain == "true":
-    load_model = torch.load(args.path)
 
 # Constants
 IMAGE_SIZE = args.image_size
@@ -63,7 +52,7 @@ IMAGE_PATH = args.image_folder
 # Hyperparameters for training
 EPOCHS = 20
 BATCH_SIZE = 16
-LEARNING_RATE = load_model["learning_rate"] if load_model is not None else 1e-3
+LEARNING_RATE = 1e-3
 LR_DECAY_RATE = 0.98
 
 # Hyperparameters for models
@@ -83,6 +72,19 @@ NUM_IMAGES_SAVE = 4
 
 # Check cuda is available or not
 device = "cuda:0" if torch.cuda.is_available() else "cpu"
+
+model_config = dict(
+    num_tokens=NUM_TOKENS,
+    smooth_l1_loss=SMOOTH_L1_LOSS,
+    num_resnet_blocks=NUM_RESNET_BLOCKS,
+    kl_loss_weight=KL_LOSS_WEIGHT
+)
+
+run = wandb.init(
+    project='dalle_train_vae',
+    job_type='train_model',
+    config=model_config
+)
 
 
 class TrainDataset(Dataset):
@@ -128,39 +130,30 @@ ds = TrainDataset(
 )
 dl = DataLoader(ds, BATCH_SIZE, shuffle=True)
 
-# Create parameters for training dVAE
-if load_model is not None:
-    vae_params = load_model["hparams"]
-else:
-    vae_params = dict(
-        image_size=IMAGE_SIZE,
-        num_layers=NUM_LAYERS,
-        num_tokens=NUM_TOKENS,
-        codebook_dim=EMB_DIM,
-        hidden_dim=HID_DIM,
-        num_resnet_blocks=NUM_RESNET_BLOCKS
-    )
+vae_params = dict(
+    image_size=IMAGE_SIZE,
+    num_layers=NUM_LAYERS,
+    num_tokens=NUM_TOKENS,
+    codebook_dim=EMB_DIM,
+    hidden_dim=HID_DIM,
+    num_resnet_blocks=NUM_RESNET_BLOCKS
+)
 vae = DiscreteVAE(
     **vae_params,
     smooth_l1_loss=SMOOTH_L1_LOSS,
     kl_div_loss_weight=KL_LOSS_WEIGHT
 ).to(device)
 
-if load_model is not None:
-    # Load state dict
-    vae.load_state_dict(load_model["weights"])
-
 # Check whether training data is enough
 assert len(ds) > 0, 'folder does not contain any images'
 logging.info(f'{len(ds)} images found for training')
 
 
-def save_model(path, lr):
+def save_model(path):
     # Save the training state
     save_obj = {
         'hparams': vae_params,
         'weights': vae.state_dict(),
-        "learning_rate": lr
     }
     torch.save(save_obj, path)
 
@@ -176,7 +169,7 @@ temp = STARTING_TEMP
 for epoch in range(EPOCHS):
     running = tqdm(dl, leave=False)
     for i, (images, _) in enumerate(running):
-        running.set_description(f"Epoch {epoch+1}/{EPOCHS}")
+        running.set_description(f"Epoch {epoch + 1}/{EPOCHS}")
         images = images.to(device)
 
         loss, recons = vae(
@@ -205,7 +198,17 @@ for epoch in range(EPOCHS):
                 lambda t: make_grid(t.float(), nrow=int(sqrt(k)), normalize=True, range=(-1, 1)),
                 (images, recons, hard_recons))
 
-            save_model(f'./vae.pt', scheduler.get_last_lr()[0])
+            logs = {
+                **logs,
+                'sample images': wandb.Image(images, caption='original images'),
+                'reconstructions': wandb.Image(recons, caption='reconstructions'),
+                'hard reconstructions': wandb.Image(hard_recons, caption='hard reconstructions'),
+                'codebook_indices': wandb.Histogram(codes),
+                'temperature': temp
+            }
+
+            save_model(f'./vae.pt')
+            wandb.save('./vae.pt')
 
             # Temperature anneal
             temp = max(temp * math.exp(-ANNEAL_RATE * global_step), TEMP_MIN)
@@ -217,7 +220,32 @@ for epoch in range(EPOCHS):
             lr = scheduler.get_last_lr()[0]
             running.set_postfix(learning_rate=f"lr - {lr:6f}", loss=f"{loss.item()}")
 
+            logs = {
+                **logs,
+                'epoch': epoch,
+                'iter': i,
+                'loss': loss.item(),
+                'lr': lr
+            }
+
+        wandb.log(logs)
         global_step += 1
+
+    # save trained model to wandb as an artifact every epoch's end
+    model_artifact = wandb.Artifact('trained-vae',
+                                    type='model',
+                                    metadata=dict(model_config))
+    model_artifact.add_file('vae.pt')
+    run.log_artifact(model_artifact)
 
 # Save final dVAE
 save_model('./vae-final.pt')
+wandb.save('./vae-final.pt')
+
+model_artifact = wandb.Artifact('trained-vae',
+                                type='model',
+                                metadata=dict(model_config))
+model_artifact.add_file('vae-final.pt')
+run.log_artifact(model_artifact)
+
+wandb.finish()
