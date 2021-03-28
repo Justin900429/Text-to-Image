@@ -261,7 +261,8 @@ for epoch in range(EPOCHS):
 
             log = {
                 **log,
-                'image': wandb.Image(image, caption=decoded_text)
+                'reference_image': wandb.Image(images[:1]),
+                'generate_image': wandb.Image(image, caption=decoded_text),
             }
 
         wandb.log(log)
