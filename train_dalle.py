@@ -19,6 +19,9 @@ from torch.utils.data import DataLoader, Dataset
 from dalle_pytorch import OpenAIDiscreteVAE, VQGanVAE1024, DiscreteVAE, DALLE
 from dalle_pytorch.simple_tokenizer import tokenize, tokenizer, VOCAB_SIZE
 
+# See the training process
+import wandb
+
 # Set up logger
 logging.getLogger().setLevel(logging.INFO)
 
@@ -206,6 +209,16 @@ if RESUME:
 # Optimizer
 opt = Adam(dalle.parameters(), lr=LEARNING_RATE)
 
+model_config = dict(
+    depth=DEPTH,
+    heads=HEADS,
+    dim_head=DIM_HEAD
+)
+
+run = wandb.init(project='dalle_train_transformer',
+                 resume=RESUME,
+                 config=model_config)
+
 # Training
 for epoch in range(EPOCHS):
     for i, (text, images, mask) in enumerate(dl):
@@ -220,8 +233,17 @@ for epoch in range(EPOCHS):
         opt.step()
         opt.zero_grad()
 
+        log = {}
+
         if i % 10 == 0:
             logging.info(f"{epoch}, {i}, loss - {loss.item()}")
+
+            log = {
+                **log,
+                'epoch': epoch,
+                'iter': i,
+                'loss': loss.item()
+            }
 
         if i % 100 == 0:
             sample_text = text[:1]
@@ -235,7 +257,29 @@ for epoch in range(EPOCHS):
             )
 
             save_model(f'./dalle.pt')
+            wandb.save(f'./dalle.pt')
 
+            log = {
+                **log,
+                'image': wandb.Image(image, caption=decoded_text)
+            }
+
+        wandb.log(log)
+
+    # save trained model to wandb as an artifact every epoch's end
+    model_artifact = wandb.Artifact('trained-dalle',
+                                    type='model',
+                                    metadata=dict(model_config))
+    model_artifact.add_file('dalle.pt')
+    run.log_artifact(model_artifact)
 
 # Save final DALLE
 save_model(f'./dalle-final.pt')
+wandb.save('./dalle-final.pt')
+model_artifact = wandb.Artifact('trained-dalle',
+                                type='model',
+                                metadata=dict(model_config))
+model_artifact.add_file('dalle-final.pt')
+run.log_artifact(model_artifact)
+
+wandb.finish()
